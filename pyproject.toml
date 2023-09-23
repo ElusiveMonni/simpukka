@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "simpukka"
+version = "0.0.7"
+readme = "readme.md"
+dependencies = [
+    "python-dotenv",
+    "requests",
+    "psutil",
+    "urlextract",
+    "python-dateutil",
+    "python-logging-loki",
+]
+

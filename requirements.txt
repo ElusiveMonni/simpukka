@@ -1,0 +1,2 @@
+urlextract==1.8.0
+attrs==23.1.0
