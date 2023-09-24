@@ -102,6 +102,8 @@ def template_process(data, template_str):
     except (UndefinedError, Exception) as e:
         return e, 0
 
+
+
 class TemplateProcess:
     """Class which handles the sandbox of template process."""
 
@@ -122,7 +124,7 @@ class TemplateProcess:
         start = time.time()
         t = template_process.remote(self.data, self.template_str)
         try:
-            r, r_type = ray.get(t, timeout=2)
+            r, r_type = ray.get(t, timeout=config.timeout)
             if r_type:
                 result = r
             else:
@@ -131,6 +133,19 @@ class TemplateProcess:
             error = "timeout"
         return Result(result=result, time_taken=time.time()-start, peak_ram=1, error=error)
 
+    async def run_async(self):
+        error = ""
+        result = "Failed to render."
+        start = time.time()
+        try:
+            r, r_type = await asyncio.wait_for(template_process.remote(self.data, self.template_str), timeout=5)
+            if r_type:
+                result = r
+            else:
+                error = r
+        except TimeoutError:
+            error = "timeout"
+        return Result(result=result, time_taken=time.time()-start, peak_ram=1, error=error)
 
 
 class Template:
@@ -168,9 +183,8 @@ class Template:
 
     async def async_start(self):
         t = TemplateProcess(self.string, data=self.data)
-        loop = asyncio.get_event_loop()
 
-        r = await loop.run_in_executor(None, t.run)
+        r = await t.run_async()
 
         if self.filter_level == FilterLevel.moderate:
             r.result = filters.url_filter(r.result)
