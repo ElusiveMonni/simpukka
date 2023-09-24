@@ -1,5 +1,4 @@
 import asyncio
-import multiprocessing as mp
 import time
 from enum import Enum
 from importlib.metadata import entry_points
@@ -12,8 +11,13 @@ from jinja2.runtime import Undefined, UndefinedError
 from jinja2 import nodes
 import psutil
 
+import simpukka.initialise
 from simpukka import filters
 from simpukka import config
+from simpukka import initialise
+
+import ray
+from ray import exceptions as ray_exceptions
 
 class RenderError(Exception):
     pass
@@ -83,7 +87,8 @@ class TrackedSandboxedEnvironment(SandboxedEnvironment):
             print("MISSING")
         return r
 
-def template_process(data, result_dict, template_str):
+@ray.remote(num_cpus=1, memory=20000000, max_retries=0)
+def template_process(data, template_str):
     env = TrackedSandboxedEnvironment(block_start_string=config.block_start_string,
                                       block_end_string=config.block_end_string,
                                       variable_start_string=config.variable_start_string,
@@ -93,10 +98,9 @@ def template_process(data, result_dict, template_str):
                                       )
     try:
         template = env.from_string(template_str)
-        result = template.render(**data)
-        result_dict["result"] = result
+        return template.render(**data), 1
     except (UndefinedError, Exception) as e:
-        result_dict["error"] = e
+        return e, 0
 
 class TemplateProcess:
     """Class which handles the sandbox of template process."""
@@ -113,37 +117,19 @@ class TemplateProcess:
         self.template_str = template
 
     def run(self):
-
-        manager = mp.Manager()
-        result_dict = manager.dict()
-        result_dict["result"] = ""
-        ctx = mp.get_context('spawn')
-
-        if config.python_interpreter is not None:
-            ctx.set_executable(config.python_interpreter)
-
-        p = ctx.Process(target=template_process, daemon=True, args=(self.data, result_dict, self.template_str))
-        p.start()
-
-        ram_use = 1
-
-        proc = psutil.Process(p.pid)
-        while time.time() - proc.create_time() <= config.timeout:
-            try:
-                ram_use = proc.memory_info().peak_wset
-                if ram_use / 1024 ** 2 > config.memory_limit:
-                    result_dict["error"] = RenderMemoryExceeded("Maximum memory usage exceeded!")
-                    p.kill()
-                    break
-            except psutil.NoSuchProcess:
-                break
-            time.sleep(.01)
-        else:
-            p.kill()
-            result_dict["error"] = RenderTimeoutError("Rendering timed out!")
-
-        took = time.time() - proc.create_time()
-        return Result(result=result_dict["result"], time_taken=took, peak_ram=ram_use, error=result_dict.get("error"))
+        error = ""
+        result = "Failed to render."
+        start = time.time()
+        t = template_process.remote(self.data, self.template_str)
+        try:
+            r, r_type = ray.get(t, timeout=2)
+            if r_type:
+                result = r
+            else:
+                error = r
+        except ray_exceptions.GetTimeoutError:
+            error = "timeout"
+        return Result(result=result, time_taken=time.time()-start, peak_ram=1, error=error)
 
 
 
@@ -196,15 +182,15 @@ class Template:
         return r
 
 
-
 if __name__ == "__main__":
-    start = time.time()
+    simpukka.initialise.intialise()
+    #start = time.time()
     t = Template("", filter_level=FilterLevel.moderate,
                  data={"applicant": {"name": "John", "age": 36, "Do you like cookies": "yes"}})
     r = t.start()
-    print(r)
-    end = time.time()
-    print("Whole time:", end-start, "s")
-    print("Render time:", r.time_taken, "s")
-    print("Outside render time:", end-start-r.time_taken, "s")
-    print("Ram usage:", r.peak_ram / 1024 ** 2, "mb")
+    #print(r)
+    #end = time.time()
+    #print("Whole time:", end-start, "s")
+    #print("Render time:", r.time_taken, "s")
+    #print("Outside render time:", end-start-r.time_taken, "s")
+    #print("Ram usage:", r.peak_ram / 1024 ** 2, "mb")
