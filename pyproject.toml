@@ -13,6 +13,6 @@ dependencies = [
     "urlextract",
     "python-dateutil",
     "python-logging-loki",
-    'ray["default"]',
+    "ray[default]",
 ]
 
