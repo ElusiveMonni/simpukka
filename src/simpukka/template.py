@@ -120,7 +120,7 @@ class TemplateProcess:
 
     def run(self):
         error = ""
-        result = "Failed to render."
+        result = "Failed to render!"
         start = time.time()
         t = template_process.remote(self.data, self.template_str)
         try:
@@ -135,10 +135,10 @@ class TemplateProcess:
 
     async def run_async(self):
         error = ""
-        result = "Failed to render."
+        result = "Failed to render!"
         start = time.time()
         try:
-            r, r_type = await asyncio.wait_for(template_process.remote(self.data, self.template_str), timeout=5)
+            r, r_type = await asyncio.wait_for(template_process.remote(self.data, self.template_str), timeout=config.timeout)
             if r_type:
                 result = r
             else:
@@ -197,12 +197,15 @@ class Template:
 
 
 if __name__ == "__main__":
-    simpukka.initialise.intialise()
+    simpukka.initialise.init_simpukka()
     #start = time.time()
-    t = Template("", filter_level=FilterLevel.moderate,
+    t = Template("Hello", filter_level=FilterLevel.moderate,
                  data={"applicant": {"name": "John", "age": 36, "Do you like cookies": "yes"}})
     r = t.start()
-    #print(r)
+    print(r)
+    t = Template("Hello {{name}}. Why do are you {{age}} years of age?", filter_level=FilterLevel.moderate,
+                 data={"applicant": {"name": "John", "age": 36, "Do you like cookies": "yes"}})
+    print(t.start())
     #end = time.time()
     #print("Whole time:", end-start, "s")
     #print("Render time:", r.time_taken, "s")
