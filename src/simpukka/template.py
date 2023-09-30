@@ -41,10 +41,10 @@ class SimpukkaPreScan:
 class Result:
     result: str
     time_taken: float
-    peak_ram: float|int = 1
     error: RenderError = None
     api_calls: int = 0
     plugin_results: dict = {}
+    shared: dict = None
 
 class FilterLevel(Enum):
     """
@@ -63,6 +63,7 @@ class SilentUndefined(Undefined):
 
 def load_plugins(disabled, reverse_mode=False, **kwargs):
     data = {}
+    shared = {}
     plugins = []
     for plugin in entry_points().select(group="simpukka.plugin"):
         if not reverse_mode and plugin.name in disabled or reverse_mode and plugin.name not in disabled :
@@ -72,7 +73,9 @@ def load_plugins(disabled, reverse_mode=False, **kwargs):
         plugins.append(plugin)
         p_data = plugin.data if hasattr(plugin, 'data') else plugin.get("data", {})
         data = data | p_data
-    return data, plugins
+        shared = shared | plugin.shared_data if hasattr(plugin, 'shared_data') else plugin.get("shared_data", {})
+
+    return data, shared, plugins
 
 
 
@@ -88,7 +91,7 @@ class TrackedSandboxedEnvironment(SandboxedEnvironment):
         return r
 
 @ray.remote(num_cpus=1, memory=20000000, max_retries=0)
-def template_process(data, template_str):
+def template_process(data, template_str, shared):
     env = TrackedSandboxedEnvironment(block_start_string=config.block_start_string,
                                       block_end_string=config.block_end_string,
                                       variable_start_string=config.variable_start_string,
@@ -98,16 +101,16 @@ def template_process(data, template_str):
                                       )
     try:
         template = env.from_string(template_str)
-        return template.render(**data), 1
+        return template.render(**data, **shared), shared, 1
     except (UndefinedError, Exception) as e:
-        return e, 0
+        return e, shared, 0
 
 
 
 class TemplateProcess:
     """Class which handles the sandbox of template process."""
 
-    def __init__(self, template: str, data: dict):
+    def __init__(self, template: str, data: dict, shared_data: dict):
         """
         :param str template: String to render.
         :param dict data: Dictionary of external data to be passed to template.
@@ -116,36 +119,40 @@ class TemplateProcess:
         if data is None:
             self.data = {}
 
+        self.shared_data = shared_data
+        if shared_data is None:
+            self.shared_data = {}
+
         self.template_str = template
 
     def run(self):
         error = ""
         result = "Failed to render!"
         start = time.time()
-        t = template_process.remote(self.data, self.template_str)
+        t = template_process.remote(self.data, self.template_str, shared=self.shared_data)
         try:
-            r, r_type = ray.get(t, timeout=config.timeout)
+            r, shared, r_type = ray.get(t, timeout=config.timeout)
             if r_type:
                 result = r
             else:
                 error = r
         except ray_exceptions.GetTimeoutError:
             error = "timeout"
-        return Result(result=result, time_taken=time.time()-start, peak_ram=1, error=error)
+        return Result(result=result, time_taken=time.time()-start, error=error, shared=shared)
 
     async def run_async(self):
         error = ""
         result = "Failed to render!"
         start = time.time()
         try:
-            r, r_type = await asyncio.wait_for(template_process.remote(self.data, self.template_str), timeout=config.timeout)
+            r, shared, r_type = await asyncio.wait_for(template_process.remote(self.data, self.template_str, shared=self.shared_data), timeout=config.timeout)
             if r_type:
                 result = r
             else:
                 error = r
         except TimeoutError:
             error = "timeout"
-        return Result(result=result, time_taken=time.time()-start, peak_ram=1, error=error)
+        return Result(result=result, time_taken=time.time()-start, error=error, shared=shared)
 
 
 class Template:
@@ -153,24 +160,28 @@ class Template:
     Main class which handles loading everything needed for the template process
     """
 
-    def __init__(self, string: str, filter_level: FilterLevel = FilterLevel.moderate, disabled_plugins = None, reverse_disable=False, data: dict = None, **kwargs):
+    def __init__(self, string: str, filter_level: FilterLevel = FilterLevel.moderate, disabled_plugins = None, reverse_disable=False, data: dict = None, shared_data: dict = None,**kwargs):
 
         self.data = data
         if data is None:
             self.data = {}
 
+        self.shared_data = shared_data
+        if shared_data is None:
+            self.shared_data = {}
+
         if disabled_plugins is None:
             disabled_plugins = []
 
-        plugin_data, plugins = load_plugins(disabled_plugins, reverse_disable, **kwargs)
+        plugin_data, plugin_shared, plugins = load_plugins(disabled_plugins, reverse_disable, **kwargs)
         self.plugins = plugins
         self.data = plugin_data | self.data
-
+        self.shared_data = self.shared_data | plugin_shared
         self.filter_level = filter_level
         self.string = string
 
     def start(self):
-        r = TemplateProcess(self.string, data=self.data).run()
+        r = TemplateProcess(self.string, data=self.data, shared_data=self.shared_data).run()
 
         if self.filter_level == FilterLevel.moderate:
             r.result = filters.url_filter(r.result)
@@ -182,7 +193,7 @@ class Template:
         return r
 
     async def async_start(self):
-        t = TemplateProcess(self.string, data=self.data)
+        t = TemplateProcess(self.string, data=self.data, shared_data=self.shared_data)
 
         r = await t.run_async()
 
@@ -203,7 +214,7 @@ if __name__ == "__main__":
                  data={"applicant": {"name": "John", "age": 36, "Do you like cookies": "yes"}})
     r = t.start()
     print(r)
-    t = Template("Hello {{name}}. Why do are you {{age}} years of age?", filter_level=FilterLevel.moderate,
+    t = Template("Hello {{applicant.name}}. Why do are you {{applicant.age}} years of age?", filter_level=FilterLevel.moderate,
                  data={"applicant": {"name": "John", "age": 36, "Do you like cookies": "yes"}})
     print(t.start())
     #end = time.time()
