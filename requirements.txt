@@ -1,2 +1,6 @@
 urlextract==1.8.0
 attrs==23.1.0
+python-dotenv
+ray[default]
+pydantic==1.10.9
+jinja2

@@ -8,13 +8,10 @@ import jinja2.utils
 from jinja2.sandbox import SandboxedEnvironment, Environment, Context
 from jinja2 import Undefined, meta
 from jinja2.runtime import Undefined, UndefinedError
-from jinja2 import nodes
-import psutil
 
 import simpukka.initialise
 from simpukka import filters
 from simpukka import config
-from simpukka import initialise
 
 import ray
 from ray import exceptions as ray_exceptions
@@ -129,6 +126,7 @@ class TemplateProcess:
         error = ""
         result = "Failed to render!"
         start = time.time()
+        shared = {}
         t = template_process.remote(self.data, self.template_str, shared=self.shared_data)
         try:
             r, shared, r_type = ray.get(t, timeout=config.timeout)
@@ -144,13 +142,14 @@ class TemplateProcess:
         error = ""
         result = "Failed to render!"
         start = time.time()
+        shared = {}
         try:
             r, shared, r_type = await asyncio.wait_for(template_process.remote(self.data, self.template_str, shared=self.shared_data), timeout=config.timeout)
             if r_type:
                 result = r
             else:
                 error = r
-        except TimeoutError:
+        except asyncio.exceptions.TimeoutError:
             error = "timeout"
         return Result(result=result, time_taken=time.time()-start, error=error, shared=shared)
 
@@ -176,7 +175,7 @@ class Template:
         plugin_data, plugin_shared, plugins = load_plugins(disabled_plugins, reverse_disable, **kwargs)
         self.plugins = plugins
         self.data = plugin_data | self.data
-        self.shared_data = self.shared_data | plugin_shared
+        self.shared_data |= plugin_shared
         self.filter_level = filter_level
         self.string = string
 

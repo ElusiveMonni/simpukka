@@ -8,11 +8,10 @@ version = "0.0.10"
 readme = "readme.md"
 dependencies = [
     "python-dotenv",
-    "requests",
-    "psutil",
     "urlextract",
-    "python-dateutil",
-    "python-logging-loki",
     "ray[default]",
+    "pydantic==1.10.9",
+    "jinja2",
+    "attrs"
 ]
 
