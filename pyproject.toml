@@ -12,6 +12,7 @@ dependencies = [
     "ray[default]",
     "pydantic==1.10.9",
     "jinja2",
-    "attrs"
+    "attrs",
+    "sshtunnel"
 ]
 
