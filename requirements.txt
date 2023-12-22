@@ -4,3 +4,4 @@ python-dotenv
 ray[default]
 pydantic==1.10.9
 jinja2
+ray>=2.8.1 # not directly required, pinned by Snyk to avoid a vulnerability
