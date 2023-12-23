@@ -28,7 +28,7 @@ def setup_tunnel():
 
 def init_simpukka(remote_cluster=None, tunnel_required=False):
     if remote_cluster == "local":
-        ray.init()
+        ray.init(ignore_reinit_error=True)
     if tunnel_required:
             setup_tunnel()
             ray.init("ray://127.0.0.1:10001")
