@@ -3,9 +3,12 @@ import pathlib
 import os
 from simpukka import template
 from sshtunnel import SSHTunnelForwarder
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 def setup_tunnel():
-
     remote_user = os.getenv("ray_server_user")
     remote_password = os.getenv("ray_server_password")
     remote_host = os.getenv("ray_server_host")
@@ -23,7 +26,9 @@ def setup_tunnel():
     server.start()
 
 
-def init_simpukka(remote_cluster=None, tunnel_required=True):
+def init_simpukka(remote_cluster=None, tunnel_required=False):
+    if remote_cluster == "local":
+        ray.init()
     if tunnel_required:
             setup_tunnel()
             ray.init("ray://127.0.0.1:10001")
