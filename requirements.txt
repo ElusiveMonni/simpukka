@@ -6,3 +6,5 @@ pydantic==1.10.9
 jinja2
 python-dotenv
 sshtunnel
+cryptography>=41.0.6 # not directly required, pinned by Snyk to avoid a vulnerability
+paramiko>=3.4.0 # not directly required, pinned by Snyk to avoid a vulnerability
