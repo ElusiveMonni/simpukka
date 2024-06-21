@@ -6,3 +6,4 @@ pydantic==1.10.9
 jinja2
 python-dotenv
 sshtunnel
+urllib3>=2.2.2 # not directly required, pinned by Snyk to avoid a vulnerability
